@@ -20,18 +20,13 @@ st.caption("トレード記録 — CFD / 現物（米株）")
 
 CSV_PATH = 'data/trade_log.csv'
 
-# GitHub設定（Secretsから読み込み）
 GITHUB_TOKEN = st.secrets.get('github_token', '')
 GITHUB_REPO  = st.secrets.get('github_repo', '')
 GITHUB_API   = f'https://api.github.com/repos/{GITHUB_REPO}/contents/{CSV_PATH}'
 
-# 列の定義
 COLUMNS = ['id','entry_date','ticker','type','direction',
            'entry_price','stop_price','exit_price','exit_date','memo']
 
-# ============================================================
-#  GitHub 読み書き
-# ============================================================
 def github_load():
     if not GITHUB_TOKEN:
         return pd.DataFrame(columns=COLUMNS), None
@@ -73,11 +68,7 @@ def github_save(df, sha=None):
         st.error(f'保存エラー: {e}')
         return False
 
-# ============================================================
-#  計算
-# ============================================================
 def calc_pnl_pct(row):
-    """損益率を計算。方向を考慮（売りは下がると利益）"""
     try:
         entry = float(row['entry_price'])
         exit_ = float(row['exit_price'])
@@ -91,7 +82,6 @@ def calc_pnl_pct(row):
         return None
 
 def calc_rr(row):
-    """リスクリワード比（エントリー〜損切り : エントリー〜利益）"""
     try:
         entry = float(row['entry_price'])
         stop  = float(row['stop_price'])
@@ -105,7 +95,6 @@ def calc_rr(row):
         return None
 
 def get_status(row):
-    """ステータス判定"""
     if pd.isna(row['exit_price']) or row['exit_price'] == '':
         return '🟢 保有中'
     pnl = calc_pnl_pct(row)
@@ -118,9 +107,6 @@ def get_status(row):
     else:
         return '⚪ 手仕舞い'
 
-# ============================================================
-#  タブ
-# ============================================================
 tab1, tab2, tab3 = st.tabs(['➕ 新規記録', '📋 取引一覧', '📊 成績'])
 
 with tab1:
@@ -142,7 +128,6 @@ with tab1:
 
     memo = st.text_input('メモ（任意）', placeholder='エントリー根拠など')
 
-    # リスクリワードの目安表示
     if entry_price > 0 and stop_price > 0:
         risk_pct = abs(entry_price - stop_price) / entry_price * 100
         st.info(f'損切りまでの値幅: {risk_pct:.1f}%')
@@ -181,13 +166,11 @@ with tab2:
     if len(df) == 0:
         st.info('まだ記録がありません。')
     else:
-        # 表示用に計算列を追加
         df_disp = df.copy()
         df_disp['損益%']   = df_disp.apply(calc_pnl_pct, axis=1)
         df_disp['RR']      = df_disp.apply(calc_rr, axis=1)
         df_disp['状態']    = df_disp.apply(get_status, axis=1)
 
-        # フィルター
         filt = st.radio('種別で絞り込み', ['すべて', '現物', 'CFD'], horizontal=True)
         if filt != 'すべて':
             df_disp = df_disp[df_disp['type'] == filt]
@@ -217,7 +200,9 @@ with tab2:
                 if exit_price == 0:
                     st.error('決済価格を入力してください')
                 else:
-                    df.loc[df['id'] == sel_id, 'exit_price'] = exit_price
+                    df['exit_price'] = df['exit_price'].astype('object')
+                    df['exit_date']  = df['exit_date'].astype('object')
+                    df.loc[df['id'] == sel_id, 'exit_price'] = str(exit_price)
                     df.loc[df['id'] == sel_id, 'exit_date']  = str(exit_date)
                     with st.spinner('保存中...'):
                         if github_save(df, sha):
@@ -226,7 +211,6 @@ with tab2:
         else:
             st.caption('保有中の取引はありません')
 
-        # 削除
         with st.expander('🗑️ 記録を削除'):
             del_id = st.selectbox('削除する取引ID', df['id'].tolist())
             if st.button('削除する', type='secondary'):
@@ -242,7 +226,6 @@ with tab3:
     if len(df) == 0:
         st.info('まだ記録がありません。')
     else:
-        # 決済済みのみ集計
         df['損益%'] = df.apply(calc_pnl_pct, axis=1)
         closed = df[df['損益%'].notna()].copy()
 
@@ -275,7 +258,6 @@ with tab3:
             show_stats(closed[closed['type']=='CFD'], '⚡ CFD')
 
             st.divider()
-            # 損益曲線
             st.subheader('📈 損益曲線（累積損益%）')
             closed_sorted = closed.sort_values('entry_date')
             closed_sorted['累積'] = closed_sorted['損益%'].cumsum()
