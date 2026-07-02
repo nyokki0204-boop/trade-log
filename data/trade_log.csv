@@ -1,0 +1,2 @@
+id,entry_date,ticker,type,direction,entry_price,stop_price,exit_price,exit_date,memo
+1,2026-07-02,TEST,CFD,買い,0.02,0.02,,,test
