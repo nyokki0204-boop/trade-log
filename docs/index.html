@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Trade Log">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon-180.png">
+  <link rel="stylesheet" href="./style.css">
+  <title>Trade Log</title>
+</head>
+<body>
+  <div class="shell">
+    <header class="top"><div class="brand"><span class="brand-mark">↗</span><div><strong>Trade Log</strong><small>記録を、次の判断へ。</small></div></div><span class="local-badge">● この端末に保存</span></header>
+    <main>
+      <section id="view-home" class="view active">
+        <div class="eyebrow">OVERVIEW</div><h1>今日の記録</h1><p class="lead">トレードと資産の変化を、ひと目で。</p>
+        <div id="backup-reminder" class="notice hidden"></div>
+        <div class="hero"><div class="label">現在の口座総資産</div><div id="home-total" class="hero-number">未記録</div><div id="home-operating" class="hero-sub">資産タブから最初の金額を登録</div></div>
+        <div id="home-stats" class="stat-grid"></div>
+        <div class="section-head"><h2>最近の取引</h2><button class="text-button" data-nav="trades">一覧を見る →</button></div><div id="home-recent" class="stack"></div>
+        <button class="primary wide" data-nav="new">＋ 取引を記録する</button>
+      </section>
+
+      <section id="view-new" class="view"><div class="eyebrow">NEW TRADE</div><h1>取引を記録</h1><p class="lead">エントリー時点の計画を残しましょう。</p>
+        <form id="trade-form" class="card form-grid">
+          <label>エントリー日<input name="entry_date" type="date" required></label><label>銘柄<input name="ticker" placeholder="AAPL" maxlength="30" required autocapitalize="characters"></label>
+          <label>種別<select name="type"><option>現物</option><option>CFD</option></select></label><label>方向<select name="direction"><option>買い</option><option>売り</option></select></label>
+          <label>エントリー価格<input name="entry_price" type="number" min="0.000001" step="any" inputmode="decimal" required></label><label>損切り価格<input name="stop_price" type="number" min="0" step="any" inputmode="decimal" placeholder="任意"></label>
+          <label>タグ<input name="tag" list="past-tags" maxlength="200" placeholder="例：押し目買い"><datalist id="past-tags"></datalist></label><label class="full">メモ<textarea name="memo" rows="3" maxlength="5000" placeholder="判断の根拠、反省など"></textarea></label>
+          <button class="primary full" type="submit">取引を保存</button>
+        </form>
+      </section>
+
+      <section id="view-trades" class="view"><div class="eyebrow">JOURNAL</div><h1>取引一覧</h1><p class="lead">保有中から決済済みまで。</p><label class="filter-label">表示<select id="trade-filter"><option value="all">すべて</option><option value="open">保有中</option><option value="closed">決済済み</option><option value="現物">現物</option><option value="CFD">CFD</option></select></label><div id="trade-list" class="stack"></div>
+        <h2>成績を振り返る</h2><p class="hint">損益率は各取引の価格変化です。数量・手数料は含みません。</p><div id="analysis" class="stack"></div>
+      </section>
+
+      <section id="view-assets" class="view"><div class="eyebrow">PORTFOLIO</div><h1>総資産</h1><p class="lead">証券口座の現金と保有商品の評価額を入力します。</p>
+        <div id="asset-summary" class="stack"></div><div class="card"><h2>推移</h2><div id="asset-chart" class="chart"></div></div>
+        <form id="asset-form" class="card form-grid"><h2 class="full">資産額を記録</h2>
+          <label>評価日<input name="date" type="date" required></label><label id="currency-wrap">通貨<select name="currency"><option value="JPY">円（JPY）</option><option value="USD">ドル（USD）</option></select></label>
+          <label>口座の総資産<input name="total_assets" type="number" min="0" step="any" inputmode="decimal" required></label><label id="flow-wrap">前回からの入出金<input name="net_flow" type="number" step="any" inputmode="decimal" value="0"></label>
+          <p class="hint full">入金は＋、出金は−。売買や口座内の振替は含めません。</p><label class="full">メモ<input name="memo" maxlength="5000" placeholder="任意"></label><button class="primary full" type="submit">資産額を保存</button>
+        </form><h2>記録履歴</h2><div id="asset-list" class="stack"></div>
+      </section>
+
+      <section id="view-transfer" class="view"><div class="eyebrow">DATA & TRANSFER</div><h1>引き継ぎ</h1><p class="lead">パスワード不要。記録はこの端末のアプリ内にあります。</p>
+        <div class="card"><h2>① この端末のデータを保存</h2><p>取引と資産を1つのバックアップファイルに書き出します。iPhoneの「ファイル」に保存し、機種変更時に新しい端末へ移してください。</p><button id="export-button" class="primary wide">バックアップを書き出す</button><p id="last-backup" class="hint"></p></div>
+        <div class="card"><h2>② 新しい端末で復元</h2><p>新しい端末で先にホーム画面に追加し、アイコンから開いてバックアップを選びます。</p><label>Trade Log バックアップ（.json）<input id="bundle-file" type="file" accept=".json,application/json"></label><div id="import-preview" class="preview"></div><label class="check"><input id="replace-check" type="checkbox">この端末の既存データを置き換えることを確認</label><button id="restore-button" class="secondary wide" disabled>確認して復元</button></div>
+        <details class="card"><summary>旧Streamlit版から移す（CSV）</summary><p>旧版の取引CSVと、資産履歴CSVがあれば、それぞれ読み込みます。両方ある場合はまとめて選んでください。ここで選んだファイルの内容で端末内の記録を置き換えます。</p><label>旧版CSV（複数選択可）<input id="legacy-files" type="file" multiple accept=".csv,text/csv"></label><div id="legacy-preview" class="preview"></div><label class="check"><input id="legacy-check" type="checkbox">表示件数を確認し、端末の既存データを置き換える</label><button id="legacy-button" class="secondary wide" disabled>CSVから移行</button></details>
+        <div class="notice">端末の削除・ストレージ消去で記録を失う可能性があります。更新後はバックアップを取り、ファイルを安全な場所に保管してください。バックアップには資産額も含まれます。</div>
+      </section>
+    </main>
+    <nav class="bottom-nav" aria-label="メインメニュー"><button data-nav="home" class="selected"><span>⌂</span>ホーム</button><button data-nav="new"><span>＋</span>記録</button><button data-nav="trades"><span>▤</span>取引</button><button data-nav="assets"><span>◉</span>資産</button><button data-nav="transfer"><span>⇄</span>引き継ぎ</button></nav>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
