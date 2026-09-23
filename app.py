@@ -6,7 +6,9 @@ import json
 import base64
 import datetime
 import requests
+import hmac
 import warnings
+from asset_history import ASSET_COLUMNS, prepare_history
 warnings.filterwarnings('ignore')
 
 try:
@@ -71,6 +73,72 @@ def github_save(df, sha=None):
         st.error(f'保存エラー: {e}')
         return False
 
+
+ASSET_PATH = 'data/asset_history.csv'
+
+
+def assets_connection():
+    """Only allow account balances in a configured private repository."""
+    repo = st.secrets.get('assets_github_repo', '')
+    token = st.secrets.get('assets_github_token', '')
+    if not repo or not token:
+        st.info('資産履歴の保存先が未設定です。非公開リポジトリと専用トークンをSecretsに設定してください。')
+        return None
+    if '/' not in repo or len(repo.split('/')) != 2:
+        st.error('assets_github_repo は owner/repo の形式で設定してください。')
+        return None
+    headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json'}
+    try:
+        response = requests.get(f'https://api.github.com/repos/{repo}', headers=headers, timeout=10)
+        response.raise_for_status()
+        if response.json().get('private') is not True:
+            st.error('資産額は非公開リポジトリにのみ保存できます。保存先の公開設定を確認してください。')
+            return None
+    except requests.RequestException:
+        st.error('非公開リポジトリを確認できません。設定と接続を確認してください。')
+        return None
+    return f'https://api.github.com/repos/{repo}/contents/{ASSET_PATH}', headers
+
+
+def assets_load(connection):
+    url, headers = connection
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 404:
+            return pd.DataFrame(columns=ASSET_COLUMNS), None
+        response.raise_for_status()
+        data = response.json()
+        content = base64.b64decode(data['content']).decode('utf-8-sig')
+        history = pd.read_csv(io.StringIO(content), dtype={'memo': 'string'})
+        prepare_history(history)
+        return history, data['sha']
+    except (requests.RequestException, KeyError, ValueError, UnicodeError) as error:
+        st.error(f'資産履歴を読み込めません。保存操作を停止しました。詳細: {error}')
+        return None, None
+
+
+def assets_save(connection, history, sha):
+    # Check privacy again immediately before writing.
+    current_connection = assets_connection()
+    if current_connection is None:
+        return False
+    url, headers = current_connection
+    if url != connection[0]:
+        st.error('保存先が変更されました。画面を再読み込みしてください。')
+        return False
+    try:
+        prepare_history(history)
+        content = base64.b64encode(history[ASSET_COLUMNS].to_csv(index=False).encode('utf-8-sig')).decode('ascii')
+        payload = {'message': 'Update account asset history', 'content': content}
+        if sha:
+            payload['sha'] = sha
+        response = requests.put(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        return True
+    except (requests.RequestException, ValueError) as error:
+        st.error(f'資産履歴を保存できませんでした。再読込して確認してください。詳細: {error}')
+        return False
+
 def calc_pnl_pct(row):
     try:
         entry = float(row['entry_price'])
@@ -125,7 +193,7 @@ def get_status(row):
     else:
         return '⚪ 手仕舞い'
 
-tab1, tab2, tab3 = st.tabs(['➕ 新規記録', '📋 取引一覧', '📊 成績'])
+tab1, tab2, tab3, tab4 = st.tabs(['➕ 新規記録', '📋 取引一覧', '📊 成績', '💰 総資産'])
 
 with tab1:
     st.subheader('➕ 新しい取引を記録')
@@ -383,5 +451,88 @@ with tab3:
             ax.set_xticklabels(closed_sorted['ticker'], rotation=45, fontsize=8, color='#aaaaaa')
             plt.tight_layout()
             st.pyplot(fig)
+
+with tab4:
+    st.subheader('💰 トレード口座の総資産')
+    st.caption('現金＋保有商品の評価額を、証券口座の表示と同じ通貨で記録します。取引記録の騰落率はここに足しません。')
+    password = st.secrets.get('assets_access_password', '')
+    if not password:
+        st.warning('資産額を表示するには、Secretsに assets_access_password を設定してください。')
+    else:
+        entered = st.text_input('資産履歴のパスワード', type='password', key='assets_password_input')
+        if entered and hmac.compare_digest(entered, password):
+            connection = assets_connection()
+            if connection is not None:
+                history, sha = assets_load(connection)
+                if history is not None:
+                    prepared = prepare_history(history)
+                    currency = prepared['currency'].iloc[0] if len(prepared) else 'JPY'
+                    symbol = '¥' if currency == 'JPY' else '$'
+                    decimals = 0 if currency == 'JPY' else 2
+
+                    if len(prepared):
+                        first, latest = prepared.iloc[0], prepared.iloc[-1]
+                        total_flow = prepared['net_flow'].sum()
+                        st.caption(f"基準日 {first['date']:%Y/%m/%d} → 最新記録 {latest['date']:%Y/%m/%d}（{currency}）")
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric('現在の総資産', f"{symbol}{latest['total_assets']:,.{decimals}f}")
+                        m2.metric('総資産の増減', f"{latest['asset_change']:+,.{decimals}f} {currency}")
+                        m3.metric('入出金を除いた増減', f"{latest['cumulative_operating_change']:+,.{decimals}f} {currency}")
+                        st.caption(f"基準額 {symbol}{first['total_assets']:,.{decimals}f} ／ 累計入出金 {total_flow:+,.{decimals}f} {currency}。入出金を除いた増減＝最新総資産−基準額−累計入出金。保有商品の評価変動を含みます。")
+                        chart = prepared.set_index('date')
+                        st.markdown('#### 総資産の推移')
+                        st.line_chart(chart['total_assets'])
+                        st.markdown('#### 入出金を除いた累計増減')
+                        st.line_chart(chart['cumulative_operating_change'])
+                        display = prepared[['date', 'total_assets', 'net_flow', 'operating_change', 'memo']].copy()
+                        display['date'] = display['date'].dt.strftime('%Y-%m-%d')
+                        display.columns = ['日付', '総資産', '前回からの入出金', '前回からの調整後増減', 'メモ']
+                        st.dataframe(display.iloc[::-1], hide_index=True, use_container_width=True)
+                        st.download_button('履歴をCSVでバックアップ', history[ASSET_COLUMNS].to_csv(index=False).encode('utf-8-sig'), 'asset_history.csv', 'text/csv')
+                    else:
+                        st.info('まず基準となる口座の総資産を登録してください。')
+
+                    with st.form('new_asset_snapshot'):
+                        st.markdown('#### 総資産を記録')
+                        if not len(prepared):
+                            currency = st.selectbox('記録する通貨（以降は変更できません）', ['JPY', 'USD'])
+                        date = st.date_input('評価日', value=datetime.date.today(), max_value=datetime.date.today())
+                        total = st.number_input(f'口座の総資産（{currency}）', min_value=0.0, step=1000.0 if currency == 'JPY' else 1.0, format='%.0f' if currency == 'JPY' else '%.2f')
+                        flow = 0.0
+                        if len(prepared):
+                            flow = st.number_input('前回の記録から今回までの入出金合計（入金＋／出金−）', value=0.0, step=1000.0 if currency == 'JPY' else 1.0, format='%.0f' if currency == 'JPY' else '%.2f')
+                        memo = st.text_input('メモ（任意）')
+                        if st.form_submit_button('資産額を保存', type='primary'):
+                            if len(prepared) and date <= latest['date'].date():
+                                st.error('最新記録より後の日付にしてください。同日の修正は下の「最新記録を修正」からできます。')
+                            else:
+                                new_row = pd.DataFrame([{'date': str(date), 'total_assets': total, 'net_flow': flow, 'currency': currency, 'memo': memo}])
+                                updated = pd.concat([history, new_row], ignore_index=True)
+                                if assets_save(connection, updated, sha):
+                                    st.success('資産額を保存しました。')
+                                    st.rerun()
+
+                    if len(prepared):
+                        with st.expander('最新記録を修正'):
+                            with st.form('edit_asset_snapshot'):
+                                corrected_total = st.number_input('修正後の総資産', min_value=0.0, value=float(latest['total_assets']), format='%.0f' if currency == 'JPY' else '%.2f')
+                                corrected_flow = 0.0 if len(prepared) == 1 else st.number_input('修正後の入出金合計', value=float(latest['net_flow']), format='%.0f' if currency == 'JPY' else '%.2f')
+                                corrected_memo = st.text_input('修正後のメモ', value='' if pd.isna(latest['memo']) else str(latest['memo']))
+                                if st.form_submit_button('修正を保存'):
+                                    updated = history.copy()
+                                    idx = updated.index[updated['date'].astype(str) == latest['date'].strftime('%Y-%m-%d')][0]
+                                    updated.loc[idx, ['total_assets', 'net_flow', 'memo']] = [corrected_total, corrected_flow, corrected_memo]
+                                    if assets_save(connection, updated, sha):
+                                        st.success('修正しました。')
+                                        st.rerun()
+                        with st.expander('最新記録を取り消す'):
+                            st.caption('最新の記録だけを取り消せます。取り消した記録の入出金も集計から外れます。')
+                            if st.checkbox('最新記録の取り消しを確認する') and st.button('最新記録を取り消す'):
+                                updated = history[history['date'].astype(str) != latest['date'].strftime('%Y-%m-%d')].copy()
+                                if assets_save(connection, updated, sha):
+                                    st.success('最新記録を取り消しました。')
+                                    st.rerun()
+        elif entered:
+            st.error('パスワードが違います。')
 
 st.caption(f'最終更新: {pd.Timestamp.now().strftime("%Y/%m/%d %H:%M")}')
