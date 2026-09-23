@@ -16,19 +16,49 @@ try:
 except:
     pass
 
-st.set_page_config(page_title="Trade Log", page_icon="📒", layout="wide")
-st.title("📒 TRADE LOG")
-st.caption("トレード記録 — CFD / 現物（米株）")
+st.set_page_config(page_title="Trade Log", page_icon="📒", layout="centered", initial_sidebar_state="collapsed")
+st.markdown("""
+<style>
+  .block-container { padding-top: 1.4rem; padding-bottom: 5rem; }
+  h1 { letter-spacing: -.035em; }
+  div[data-testid="stMetric"] {
+    padding: .8rem 1rem; border-radius: 14px;
+    background: #172334; border: 1px solid #2b4058;
+  }
+  div[data-testid="stTabs"] button { min-height: 48px; font-weight: 650; }
+  @media (max-width: 640px) {
+    .block-container { padding: .9rem .85rem 5rem; }
+    h1 { font-size: 1.7rem !important; margin-bottom: .15rem; }
+    div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+      overflow-x: auto; scrollbar-width: none;
+    }
+    div[data-testid="stTabs"] button {
+      flex: 0 0 auto; padding-left: .8rem; padding-right: .8rem;
+    }
+    div[data-testid="stDataFrame"] { overflow-x: auto; }
+  }
+</style>
+""", unsafe_allow_html=True)
+st.title("📒 Trade Log")
+st.caption("記録する・振り返る・資産を追う")
 
 CSV_PATH = 'data/trade_log.csv'
 
-GITHUB_TOKEN = st.secrets.get('github_token', '')
-GITHUB_REPO  = st.secrets.get('github_repo', '')
+def get_secret(name):
+    try:
+        return st.secrets.get(name, '')
+    except FileNotFoundError:
+        return ''
+
+
+GITHUB_TOKEN = get_secret('github_token')
+GITHUB_REPO  = get_secret('github_repo')
 GITHUB_API   = f'https://api.github.com/repos/{GITHUB_REPO}/contents/{CSV_PATH}'
 
 COLUMNS = ['id','entry_date','ticker','type','direction',
            'entry_price','stop_price','exit_price','exit_date','tag','memo']
 
+@st.cache_data(ttl=20, show_spinner=False)
 def github_load():
     if not GITHUB_TOKEN:
         return pd.DataFrame(columns=COLUMNS), None
@@ -65,6 +95,7 @@ def github_save(df, sha=None):
             payload['sha'] = sha
         r = requests.put(GITHUB_API, headers=headers, data=json.dumps(payload), timeout=10)
         if r.status_code in (200, 201):
+            github_load.clear()
             return True
         else:
             st.error(f'保存エラー: {r.status_code} {r.text[:200]}')
@@ -79,8 +110,8 @@ ASSET_PATH = 'data/asset_history.csv'
 
 def assets_connection():
     """Only allow account balances in a configured private repository."""
-    repo = st.secrets.get('assets_github_repo', '')
-    token = st.secrets.get('assets_github_token', '')
+    repo = get_secret('assets_github_repo')
+    token = get_secret('assets_github_token')
     if not repo or not token:
         st.info('資産履歴の保存先が未設定です。非公開リポジトリと専用トークンをSecretsに設定してください。')
         return None
@@ -193,7 +224,7 @@ def get_status(row):
     else:
         return '⚪ 手仕舞い'
 
-tab1, tab2, tab3, tab4 = st.tabs(['➕ 新規記録', '📋 取引一覧', '📊 成績', '💰 総資産'])
+tab1, tab2, tab3, tab4 = st.tabs(['➕ 記録', '📋 取引', '📊 分析', '💰 資産'])
 
 with tab1:
     st.subheader('➕ 新しい取引を記録')
@@ -455,7 +486,7 @@ with tab3:
 with tab4:
     st.subheader('💰 トレード口座の総資産')
     st.caption('現金＋保有商品の評価額を、証券口座の表示と同じ通貨で記録します。取引記録の騰落率はここに足しません。')
-    password = st.secrets.get('assets_access_password', '')
+    password = get_secret('assets_access_password')
     if not password:
         st.warning('資産額を表示するには、Secretsに assets_access_password を設定してください。')
     else:
