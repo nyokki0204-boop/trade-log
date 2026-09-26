@@ -30,14 +30,15 @@
         <form id="trade-form" class="card form-grid">
           <label>エントリー日<input name="entry_date" type="date" required></label><label>銘柄<input name="ticker" placeholder="AAPL" maxlength="30" required autocapitalize="characters"></label>
           <label>種別<select name="type"><option>現物</option><option>CFD</option></select></label><label>方向<select name="direction"><option>買い</option><option>売り</option></select></label>
-          <label>エントリー価格<input name="entry_price" type="number" min="0.000001" step="any" inputmode="decimal" required></label><label>損切り価格<input name="stop_price" type="number" min="0" step="any" inputmode="decimal" placeholder="任意"></label>
+          <label>エントリー価格（1株・1単位）<input name="entry_price" type="number" min="0.000001" step="any" inputmode="decimal" required></label><label>数量（株数・枚数）<input name="quantity" type="number" min="0.000001" step="any" inputmode="decimal" required></label>
+          <label>損切り価格<input name="stop_price" type="number" min="0" step="any" inputmode="decimal" placeholder="任意"></label>
           <label>タグ<input name="tag" list="past-tags" maxlength="200" placeholder="例：押し目買い"><datalist id="past-tags"></datalist></label><label class="full">メモ<textarea name="memo" rows="3" maxlength="5000" placeholder="判断の根拠、反省など"></textarea></label>
           <button class="primary full" type="submit">取引を保存</button>
         </form>
       </section>
 
       <section id="view-trades" class="view"><div class="eyebrow">JOURNAL</div><h1>取引一覧</h1><p class="lead">保有中から決済済みまで。</p><label class="filter-label">表示<select id="trade-filter"><option value="all">すべて</option><option value="open">保有中</option><option value="closed">決済済み</option><option value="現物">現物</option><option value="CFD">CFD</option></select></label><div id="trade-list" class="stack"></div>
-        <h2>成績を振り返る</h2><p class="hint">損益率は各取引の価格変化です。数量・手数料は含みません。</p><div id="analysis" class="stack"></div>
+        <h2>成績を振り返る</h2><p class="hint">損益率は各取引の価格変化です。現物の損益額は数量を掛けた概算で、手数料・為替は含みません。CFDは契約仕様が異なるため損益額を計算しません。</p><div id="analysis" class="stack"></div>
       </section>
 
       <section id="view-assets" class="view"><div class="eyebrow">PORTFOLIO</div><h1>総資産</h1><p class="lead">証券口座の現金と保有商品の評価額を入力します。</p>

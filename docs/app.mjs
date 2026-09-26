@@ -58,7 +58,12 @@ function tradeCard(row) {
   const m = tradeMetrics(row), card = el('article', 'item');
   const head = el('div', 'item-head'), left = el('strong', '', row.ticker), right = el('span', m.pnl === null ? 'pill' : m.pnl < 0 ? 'negative' : 'positive', m.pnl === null ? '保有中' : pct(m.pnl));
   head.append(left, right);
-  card.append(head, el('small', '', `#${row.id} · ${row.entry_date} · ${row.type}/${row.direction} · ${row.entry_price} → ${row.exit_price ?? '保有中'}`));
+  const unit = row.type === '現物' ? '株' : '枚';
+  const quantity = row.quantity === null ? '数量未入力' : `${row.quantity.toLocaleString('ja-JP')} ${unit}`;
+  card.append(head, el('small', '', `#${row.id} · ${row.entry_date} · ${row.type}/${row.direction} · ${quantity} · ${row.entry_price} → ${row.exit_price ?? '保有中'}`));
+  if (row.type === '現物' && row.quantity !== null) {
+    card.append(el('p', '', `購入額 ${money(row.entry_price * row.quantity, 'USD')}${m.profitAmount === null ? '' : ` · 損益額 ${signed(m.profitAmount, 'USD')}`}`));
+  }
   if (row.tag || row.memo) card.append(el('p', '', [row.tag && `#${row.tag}`, row.memo].filter(Boolean).join('  ')));
   return card;
 }
@@ -94,12 +99,13 @@ function renderTrades() {
   if (!rows.length) list.append(el('p','hint','該当する取引はありません。'));
   for (const row of rows) {
     const card = tradeCard(row), actions = el('div','row-actions');
+    const quantity = el('button','',row.quantity === null ? '数量を入力' : '数量を修正'); quantity.type='button'; quantity.addEventListener('click', () => showQuantityEditor(card, row));
     const edit = el('button','',row.exit_price === null ? '決済する' : '決済を修正'); edit.type = 'button';
     edit.addEventListener('click', () => showTradeEditor(card, row));
     const remove = el('button','danger','削除'); remove.type = 'button'; remove.addEventListener('click', async () => {
       if (!confirm(`#${row.id} ${row.ticker} を削除しますか？`)) return;
       try { await save({ ...state, trades: state.trades.filter(x => x.id !== row.id) }); toast('取引を削除しました'); } catch (e) { report(e); }
-    }); actions.append(edit,remove); card.append(actions); list.append(card);
+    }); actions.append(quantity,edit,remove); card.append(actions); list.append(card);
   }
   const analysis = $('analysis'); empty(analysis);
   const closed = state.trades.filter(x => x.exit_price !== null);
@@ -115,6 +121,15 @@ function showTradeEditor(card, row) {
   const day = el('input'); day.type='date'; day.required=true; day.value=row.exit_date || today();
   const submit=el('button','secondary','決済を保存'); submit.type='submit'; form.append(el('label','','決済価格'),price,el('label','','決済日'),day,submit);
   form.addEventListener('submit',async event => { event.preventDefault(); try { const updated = { ...row, exit_price: price.value, exit_date: day.value }; await save({ ...state, trades: state.trades.map(x => x.id === row.id ? updated : x) }); toast('決済を保存しました'); } catch(e) { report(e); } }); card.append(form);
+}
+function showQuantityEditor(card, row) {
+  card.querySelector('.inline-form')?.remove();
+  const form = el('form', 'inline-form'), label = el('label', '', row.type === '現物' ? '株数' : '枚数'), input = el('input');
+  input.type='number'; input.step='any'; input.min='0.000001'; input.required=true; input.inputMode='decimal'; input.value=row.quantity ?? ''; label.append(input);
+  const submit = el('button', 'secondary', '数量を保存'); submit.type='submit'; form.append(label, submit);
+  form.addEventListener('submit', async event => { event.preventDefault(); try {
+    await save({ ...state, trades: state.trades.map(x => x.id === row.id ? { ...x, quantity: input.value } : x) }); toast('数量を保存しました');
+  } catch (e) { report(e); } }); card.append(form);
 }
 function renderAssets(prepared) {
   const latest = prepared.at(-1), currency = latest?.currency || 'JPY', summaryNode = $('asset-summary'); empty(summaryNode);
