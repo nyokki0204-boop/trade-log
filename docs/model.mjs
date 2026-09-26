@@ -1,4 +1,4 @@
-export const TRADE_COLUMNS = ['id', 'entry_date', 'ticker', 'type', 'direction', 'entry_price', 'stop_price', 'exit_price', 'exit_date', 'tag', 'memo'];
+export const TRADE_COLUMNS = ['id', 'entry_date', 'ticker', 'type', 'direction', 'entry_price', 'quantity', 'stop_price', 'exit_price', 'exit_date', 'tag', 'memo'];
 export const ASSET_COLUMNS = ['date', 'total_assets', 'net_flow', 'currency', 'memo'];
 
 const date = (value) => {
@@ -28,6 +28,8 @@ export function validateTrades(rows) {
     if (!['現物', 'CFD'].includes(type) || !['買い', '売り'].includes(direction) || (type === '現物' && direction !== '買い')) throw new Error('取引種別または方向が不正です');
     const entry_price = number(row.entry_price, '購入価格', 0);
     if (!entry_price) throw new Error('購入価格は0より大きくしてください');
+    const quantity = optionalNumber(row.quantity, '数量');
+    if (quantity !== null && quantity <= 0) throw new Error('数量は0より大きくしてください');
     const stop_price = optionalNumber(row.stop_price, '損切り価格') ?? 0;
     const exit_price = optionalNumber(row.exit_price, '決済価格');
     const exit_date = row.exit_date ? date(row.exit_date) : '';
@@ -35,7 +37,7 @@ export function validateTrades(rows) {
     const tag = String(row.tag ?? '');
     const memo = String(row.memo ?? '');
     if (tag.length > 200 || memo.length > 5000) throw new Error('タグまたはメモが長すぎます');
-    return { id, entry_date, ticker, type, direction, entry_price, stop_price, exit_price, exit_date, tag, memo };
+    return { id, entry_date, ticker, type, direction, entry_price, quantity, stop_price, exit_price, exit_date, tag, memo };
   });
 }
 
@@ -68,10 +70,10 @@ export function prepareAssets(rows) {
 }
 
 export function tradeMetrics(row) {
-  if (row.exit_price === null) return { pnl: null, r: null, days: null };
+  if (row.exit_price === null) return { pnl: null, r: null, days: null, profitAmount: null };
   const profit = (row.exit_price - row.entry_price) * (row.direction === '売り' ? -1 : 1);
   const days = Math.round((Date.parse(`${row.exit_date}T12:00:00Z`) - Date.parse(`${row.entry_date}T12:00:00Z`)) / 86400000);
-  return { pnl: profit / row.entry_price * 100, r: row.stop_price === row.entry_price ? null : profit / Math.abs(row.entry_price - row.stop_price), days };
+  return { pnl: profit / row.entry_price * 100, r: row.stop_price === row.entry_price ? null : profit / Math.abs(row.entry_price - row.stop_price), days, profitAmount: row.quantity === null ? null : profit * row.quantity };
 }
 
 export function parseCSV(input) {
@@ -106,7 +108,7 @@ export function parseCSV(input) {
 
 export function legacyCSV(input, kind) {
   const { headers, rows } = parseCSV(input);
-  const required = kind === 'trades' ? TRADE_COLUMNS.filter(x => x !== 'tag' && x !== 'memo') : ASSET_COLUMNS.filter(x => x !== 'memo');
+  const required = kind === 'trades' ? TRADE_COLUMNS.filter(x => x !== 'tag' && x !== 'memo' && x !== 'quantity') : ASSET_COLUMNS.filter(x => x !== 'memo');
   if (required.some(key => !headers.includes(key))) throw new Error('CSVに必要な列がありません');
   return kind === 'trades' ? validateTrades(rows) : validateAssets(rows);
 }

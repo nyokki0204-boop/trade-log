@@ -6,8 +6,20 @@ test('既存StreamlitのCSVを列順に依存せず読み込む', () => {
   const csv = '\uFEFFid,entry_date,ticker,type,direction,entry_price,stop_price,exit_price,exit_date,memo,tag\r\n1,2026-09-23,AAPL,現物,買い,1.0,2.0,2.0,2026-09-23,"メモ,あり",押し目\r\n';
   const [row] = legacyCSV(csv, 'trades');
   assert.equal(row.memo, 'メモ,あり');
+  assert.equal(row.quantity, null);
   assert.equal(tradeMetrics(row).pnl, 100);
   assert.equal(tradeMetrics(row).r, 1);
+});
+
+test('株数を保存し、過去のバックアップにも互換性を保つ', () => {
+  const legacy = { id: 1, entry_date: '2026-09-23', ticker: 'MSFT', type: '現物', direction: '買い', entry_price: 100, stop_price: 90, exit_price: 110, exit_date: '2026-09-24' };
+  const [old] = validateBundle({ app: 'trade-log-local', version: 1, trades: [legacy], assets: [] }).trades;
+  assert.equal(old.quantity, null);
+  assert.equal(tradeMetrics(old).profitAmount, null);
+  const [updated] = validateTrades([{ ...old, quantity: 12.5 }]);
+  assert.equal(tradeMetrics(updated).profitAmount, 125);
+  assert.throws(() => validateTrades([{ ...old, quantity: 0 }]), /数量/);
+  assert.throws(() => validateTrades([{ ...old, quantity: -1 }]), /数量/);
 });
 
 test('資産履歴は入出金を除いて計算し、日付順で復元', () => {

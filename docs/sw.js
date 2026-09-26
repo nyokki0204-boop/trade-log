@@ -1,4 +1,4 @@
-const CACHE = 'trade-log-shell-v1';
+const CACHE = 'trade-log-shell-v2';
 const FILES = ['./', './index.html', './style.css', './app.mjs', './model.mjs', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(Promise.all([caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('trade-log-shell-') && key !== CACHE).map(key => caches.delete(key)))), self.clients.claim()])));
